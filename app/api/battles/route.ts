@@ -1,10 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase'
-import { nanoid } from 'nanoid'
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const category = searchParams.get('category')
+    const status = searchParams.get('status')    // 'live' | 'resolved' | null (all)
+    const limit = Math.min(parseInt(searchParams.get('limit') || '50'), 100)
+
+    const supabase = createServerClient()
+
+    let query = supabase
+      .from('predictions')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    // Filter by status only if explicitly passed
+    if (status) query = query.eq('status', status)
+
+    // Filter by category only if explicitly passed and not 'all'
+    if (category && category !== 'all') query = query.eq('category', category)
+
+    const { data, error } = await query
+
+    if (error) {
+      console.error('Supabase GET battles error:', error)
+      return NextResponse.json([])
+    }
+
+    return NextResponse.json(data || [])
+  } catch (err) {
+    console.error('GET /api/battles error:', err)
+    return NextResponse.json([])
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
-    const { topic, category } = await req.json()
+    const body = await req.json()
+    const { topic, category } = body
 
     if (!topic?.trim()) {
       return NextResponse.json({ error: 'Topic is required' }, { status: 400 })
@@ -19,46 +54,30 @@ export async function POST(req: NextRequest) {
         category: category || 'tech',
         status: 'live',
         closes_at: new Date(Date.now() + 86400000 * 30).toISOString(),
+        vote_count: 0,
+        view_count: 0,
       })
       .select()
       .single()
 
-    if (error) throw error
-
-    return NextResponse.json(data)
-  } catch (err: any) {
-    console.error('Create battle error:', err)
-    // Return a fallback ID so the UI doesn't break
-    return NextResponse.json({ id: 'demo-' + Date.now(), topic: 'Demo battle', status: 'live' })
-  }
-}
-
-export async function GET(req: NextRequest) {
-  try {
-    const { searchParams } = new URL(req.url)
-    const category = searchParams.get('category')
-    const status = searchParams.get('status') || 'live'
-    const limit = parseInt(searchParams.get('limit') || '20')
-
-    const supabase = createServerClient()
-
-    let query = supabase
-      .from('predictions')
-      .select('*')
-      .eq('status', status)
-      .order('vote_count', { ascending: false })
-      .limit(limit)
-
-    if (category && category !== 'all') {
-      query = query.eq('category', category)
+    if (error) {
+      console.error('Supabase POST battle error:', error)
+      // Return a usable fallback so UI doesn't break
+      return NextResponse.json({
+        id: 'local-' + Date.now(),
+        topic: topic.trim(),
+        category: category || 'tech',
+        status: 'live',
+      })
     }
 
-    const { data, error } = await query
-    if (error) throw error
-
-    return NextResponse.json(data || [])
+    return NextResponse.json(data)
   } catch (err) {
-    console.error('Get battles error:', err)
-    return NextResponse.json([])
+    console.error('POST /api/battles error:', err)
+    return NextResponse.json({
+      id: 'local-' + Date.now(),
+      topic: 'Battle',
+      status: 'live',
+    })
   }
 }
