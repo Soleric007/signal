@@ -21,9 +21,11 @@ export async function POST(req: NextRequest) {
     if (error) throw error
 
     // Increment vote count on prediction
-    await supabase.rpc('increment_vote_count', { prediction_id: battleId }).catch(() => {
-      // RPC may not exist; that's fine
-    })
+  try {
+  await supabase.rpc('increment_vote_count', { prediction_id: battleId })
+} catch {
+  // RPC may not exist; that's fine
+}
 
     // Broadcast vote event
     try {
